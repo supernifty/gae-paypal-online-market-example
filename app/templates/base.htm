@@ -1,0 +1,30 @@
+<html>
+<head>
+  <link rel="stylesheet" href="/static/style.css"/>
+  <title>{% block title %}{% endblock %}</title>
+</head>
+<body>
+  <a href="/">Home</a>
+  <h2>{% block heading %}{% endblock %}</h2>
+  <div id="header">
+{% if user %}
+  Logged in as <b>{{ user.nickname }}</b>. <a href="{{ user_auth_url }}">Logout</a>
+{% else %}
+  You are not logged in. <a href="{{ user_auth_url }}">Login</a>
+{% endif %}
+  </div>
+
+{% if message %}
+  <div id="message">{{ message }}</div>
+{% endif %}
+
+  <div id="content">
+    {% block content %}
+    {% endblock %}
+  </div>
+  <br/>
+  <div id="footer">
+Copyright &copy; 2011 <a href="http://www.supernifty.com.au/">Supernifty</a>. All rights reserved.
+  </div>
+</body>
+</html>

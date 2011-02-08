@@ -1,0 +1,25 @@
+{% extends "base.htm" %}
+
+{% block title %}Sell an item{% endblock %}
+{% block heading %}Sell an item{% endblock %}
+
+{% block content %}
+<p>{{ items|length }} item{{ items|length|pluralize }} for sale.</p>
+<p>
+<ul>
+{% for item in items %}
+  <li>{{ item.title }} for ${{ item.price_dollars|floatformat:2 }}</li>
+{% endfor %}
+</ul>
+</p>
+<div id="sell_form">
+<strong>Add an item to sell</strong>
+<br/>
+<form action="/sell/add/" method="post" enctype="multipart/form-data">
+  <label for="title">Title:&nbsp; </label><input type="text" name="title"/><br/>
+  <label for="price">Price:&nbsp; </label><input type="text" name="price"/><br/>
+  <label for="image">Image:&nbsp; </label><input type="file" name="image"/><br/>
+  <input type="submit" value="Add Item"/>
+</form>
+</div>
+{% endblock %}

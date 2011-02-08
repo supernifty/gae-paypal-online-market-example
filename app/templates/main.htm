@@ -1,0 +1,21 @@
+{% extends "base.htm" %}
+
+{% block title %}Welcome to the Online Market{% endblock %}
+{% block heading %}Welcome to the Online Market{% endblock %}
+
+{% block content %}
+<p>{{ items|length }} item{{ items|length|pluralize }} for sale.</p>
+<p>
+<ul>
+{% for item in items %}
+  <li>{{ item.title }} for ${{ item.price_dollars|floatformat:2 }}<br/>
+    <img src="/image/{{ item.key }}/" alt="{{ item.title }}"/><br/>
+    <a href="/buy/{{ item.key }}/">Buy this item</a>
+  </li>
+{% endfor %}
+</ul>
+</p>
+<p>
+<a href="/sell">Sell an item</a>
+</p>
+{% endblock %}
