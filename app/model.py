@@ -14,7 +14,7 @@ class Item(db.Model):
   enabled = db.BooleanProperty()
 
   def price_dollars( self ):
-    return self.price / 100
+    return self.price / 100.0
 
   @staticmethod
   def recent():
@@ -25,6 +25,8 @@ class Purchase(db.Model):
   item = db.ReferenceProperty(Item)
   purchaser = db.UserProperty()
   created = db.DateTimeProperty(auto_now_add=True)
+  status = db.StringProperty( choices=( 'NEW', 'CREATED', 'ERROR', 'CANCELLED', 'RETURNED', 'COMPLETED' ) )
+  status_detail = db.StringProperty()
+  secret = db.StringProperty() # to verify return_url
   debug_request = db.StringProperty()
   debug_response = db.StringProperty()
-  status = db.StringProperty( choices=( 'NEW', 'CREATED', 'ERROR', 'CANCELLED', 'RETURNED', 'COMPLETED' ) )

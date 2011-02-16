@@ -1,6 +1,6 @@
 import urllib2
 
-# TODO 2.6
+# hack to enable urllib to work with Python
 import os
 os.environ['foo_proxy'] = 'bar'
 

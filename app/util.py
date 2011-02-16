@@ -1,3 +1,6 @@
+import random
+import string
+
 from google.appengine.api import users
 
 def add_user( url, dict ):
@@ -8,3 +11,9 @@ def add_user( url, dict ):
   else:
     dict['user_auth_url'] = users.create_login_url( url )
 
+def random_alnum( count ):
+  chars = string.letters + string.digits
+  result = ''
+  for i in range(count):
+    result += random.choice(chars)
+  return result

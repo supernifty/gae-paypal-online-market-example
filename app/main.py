@@ -1,5 +1,6 @@
 import cgi
 import os
+import random
 
 from google.appengine.api import users
 from google.appengine.ext import db
@@ -13,9 +14,11 @@ import paypal
 import settings
 import util
 
-# TODO 2.6
+# hack to enable urllib to work with Python 2.6
 import os
 os.environ['foo_proxy'] = 'bar'
+import urllib
+urllib.getproxies_macosx_sysconf = lambda: {}
 
 class Home(webapp.RequestHandler):
   def get(self):
@@ -66,17 +69,20 @@ class Buy(webapp.RequestHandler):
   def post(self, key):
     item = model.Item.get(key)
     # --- start purchase process ---
-    purchase = model.Purchase( item=item, purchaser=users.get_current_user(), status='NEW' )
+    purchase = model.Purchase( item=item, purchaser=users.get_current_user(), status='NEW', secret=util.random_alnum(16) )
     purchase.put()
-    pay = paypal.Pay( item.price_dollars(), "%sreturn/%s/" % (self.request.uri, purchase.key()), "%scancel/%s/" % (self.request.uri, purchase.key()), self.request.remote_addr )
+    pay = paypal.Pay( item.price_dollars(), "%sreturn/%s/%s/" % (self.request.uri, purchase.key(), purchase.secret), "%scancel/%s/" % (self.request.uri, purchase.key()), self.request.remote_addr )
+
+    purchase.debug_request = pay.raw_request
+    purchase.debug_response = pay.raw_response
+    purchase.put()
+    
     if pay.status() == 'CREATED':
       purchase.status = 'CREATED'
       purchase.put()
       self.redirect( pay.next_url() ) # go to paypal
     else:
       purchase.status = 'ERROR'
-      purchase.debug_request = pay.raw_request
-      purchase.debug_response = pay.raw_response
       purchase.put()
       data = {
         'item': model.Item.get(key),
@@ -87,20 +93,33 @@ class Buy(webapp.RequestHandler):
       self.response.out.write(template.render(path, data))
 
 class BuyReturn(webapp.RequestHandler):
-  def get(self, item_key, purchase_key ):
+  def get(self, item_key, purchase_key, secret ):
     purchase = model.Purchase.get( purchase_key )
-    # TODO ensure CREATED
-    purchase.status = 'RETURNED'
-    purchase.put()
-    # verify the transaction
+    # validation
+    if purchase.status != 'CREATED':
+      purchase.status = 'ERROR'
+      purchase.status_detail = 'Expected status to be CREATED - duplicate transaction?'
+      purchase.put
+      self.error(501)
 
-    data = {
-      'item': model.Item.get(item_key),
-      'message': 'Purchased',
-    }
-    util.add_user( self.request.uri, data )
-    path = os.path.join(os.path.dirname(__file__), 'templates/buy.htm')
-    self.response.out.write(template.render(path, data))
+    elif secret != purchase.secret:
+      purchase.status = 'ERROR'
+      purchase.status_detail = 'BuyReturn secret "%s" did not match' % secret
+      purchase.put
+      self.error(501)
+
+    else:
+      purchase.status = 'RETURNED'
+      purchase.put()
+      # verify the transaction
+  
+      data = {
+        'item': model.Item.get(item_key),
+        'message': 'Purchased',
+      }
+      util.add_user( self.request.uri, data )
+      path = os.path.join(os.path.dirname(__file__), 'templates/buy.htm')
+      self.response.out.write(template.render(path, data))
 
 class BuyCancel(webapp.RequestHandler):
   def get(self, item_key, purchase_key):
@@ -129,7 +148,7 @@ application = webapp.WSGIApplication( [
     ('/', Home),
     ('/sell', Sell),
     ('/sell/(.*)/', Sell),
-    ('/buy/(.*)/return/(.*)/', BuyReturn),
+    ('/buy/(.*)/return/(.*)/(.*)/', BuyReturn),
     ('/buy/(.*)/cancel/(.*)/', BuyCancel),
     ('/buy/(.*)/', Buy),
     ('/image/(.*)/', Image),
