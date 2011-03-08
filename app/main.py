@@ -1,4 +1,6 @@
 import cgi
+import decimal
+import logging
 import os
 import random
 
@@ -71,7 +73,18 @@ class Buy(webapp.RequestHandler):
     # --- start purchase process ---
     purchase = model.Purchase( item=item, purchaser=users.get_current_user(), status='NEW', secret=util.random_alnum(16) )
     purchase.put()
-    pay = paypal.Pay( item.price_dollars(), "%sreturn/%s/%s/" % (self.request.uri, purchase.key(), purchase.secret), "%scancel/%s/" % (self.request.uri, purchase.key()), self.request.remote_addr )
+    seller_paypal_email = util.paypal_email(item.owner)
+    if settings.USE_IPN:
+      ipn_url = "%s/ipn/%s/%s/" % ( self.request.host_url, purchase.key(), purchase.secret )
+    else:
+      ipn_url = None
+    pay = paypal.Pay( 
+      item.price_dollars(), 
+      "%sreturn/%s/%s/" % (self.request.uri, purchase.key(), purchase.secret), 
+      "%scancel/%s/" % (self.request.uri, purchase.key()), 
+      self.request.remote_addr,
+      seller_paypal_email,
+      ipn_url)
 
     purchase.debug_request = pay.raw_request
     purchase.debug_response = pay.raw_response
@@ -93,25 +106,33 @@ class Buy(webapp.RequestHandler):
       self.response.out.write(template.render(path, data))
 
 class BuyReturn(webapp.RequestHandler):
+
   def get(self, item_key, purchase_key, secret ):
+    '''user arrives here after purchase'''
     purchase = model.Purchase.get( purchase_key )
+
     # validation
-    if purchase.status != 'CREATED':
+    if purchase == None: # no key
+      self.error(404)
+
+    elif purchase.status != 'CREATED' and purchase.status != 'COMPLETED':
+      purchase.status_detail = 'Expected status to be CREATED or COMPLETED, not %s - duplicate transaction?' % purchase.status
       purchase.status = 'ERROR'
-      purchase.status_detail = 'Expected status to be CREATED - duplicate transaction?'
-      purchase.put
+      purchase.put()
       self.error(501)
 
     elif secret != purchase.secret:
       purchase.status = 'ERROR'
       purchase.status_detail = 'BuyReturn secret "%s" did not match' % secret
-      purchase.put
+      purchase.put()
       self.error(501)
 
     else:
-      purchase.status = 'RETURNED'
-      purchase.put()
-      # verify the transaction
+      if purchase.status != 'COMPLETED':
+        purchase.status = 'RETURNED'
+        purchase.put()
+
+      # verify the transaction TODO
   
       data = {
         'item': model.Item.get(item_key),
@@ -134,15 +155,62 @@ class BuyCancel(webapp.RequestHandler):
     path = os.path.join(os.path.dirname(__file__), 'templates/buy.htm')
     self.response.out.write(template.render(path, data))
 
-
 class Image (webapp.RequestHandler):
-    def get(self, id):
-      item = db.get(id)
-      if item.image:
-          self.response.headers['Content-Type'] = "image/png"
-          self.response.out.write(item.image)
+  def get(self, id):
+    item = db.get(id)
+    if item.image:
+      self.response.headers['Content-Type'] = "image/png"
+      self.response.out.write(item.image)
+    else:
+      self.error(404)
+
+class Profile (webapp.RequestHandler):
+  @login_required
+  def get(self):
+    data = {
+      'profile': model.Profile.from_user(users.get_current_user())
+    } 
+    util.add_user( self.request.uri, data )
+    path = os.path.join(os.path.dirname(__file__), 'templates/profile.htm')
+    self.response.out.write(template.render(path, data))
+
+  def post(self):
+    profile = model.Profile.from_user( users.get_current_user() )
+    if profile == None:
+      profile = model.Profile( owner = users.get_current_user() )
+    profile.paypal_email = self.request.get('paypal_email')
+    profile.put()
+    data = { 
+      'profile': profile, 
+      'message': 'Profile updated' }
+    util.add_user( self.request.uri, data )
+    path = os.path.join(os.path.dirname(__file__), 'templates/profile.htm')
+    self.response.out.write(template.render(path, data))
+
+class IPN (webapp.RequestHandler):
+
+  def post(self, key, secret):
+    '''incoming post from paypal'''
+    logging.debug( "IPN received for %s" % key )
+    ipn = paypal.IPN( self.request )
+    if ipn.success():
+      # request is paypal's
+      purchase = model.Purchase.get( key )
+      if secret != purchase.secret:
+        purchase.status = 'ERROR'
+        purchase.status_detail = 'IPN secret "%s" did not match' % secret
+        purchase.put()
+      # confirm amount
+      elif purchase.item.price_decimal() != ipn.amount:
+        purchase.status = 'ERROR'
+        purchase.status_detail = "IPN amounts didn't match. Item price %f. Payment made %f" % ( purchase.item.price_dollars(), ipn.amount )
+        purchase.put()
       else:
-          self.error(404)
+        purchase.status = 'COMPLETED'
+        purchase.put()
+    else:
+      logging.info( "PayPal IPN verify failed: %s" % ipn.error )
+      logging.debug( "Request was: %s" % self.request.body )
 
 application = webapp.WSGIApplication( [
     ('/', Home),
@@ -152,12 +220,15 @@ application = webapp.WSGIApplication( [
     ('/buy/(.*)/cancel/(.*)/', BuyCancel),
     ('/buy/(.*)/', Buy),
     ('/image/(.*)/', Image),
+    ('/profile', Profile),
+    ('/ipn/(.*)/(.*)/', IPN),
   ],
   debug=True)
 
 def main():
-    run_wsgi_app(application)
+  logging.getLogger().setLevel(logging.DEBUG)
+  run_wsgi_app(application)
 
 if __name__ == "__main__":
-    main()
+  main()
 

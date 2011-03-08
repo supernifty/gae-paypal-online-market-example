@@ -1,0 +1,16 @@
+{% extends "base.htm" %}
+
+{% block title %}User Profile{% endblock %}
+{% block heading %}User Profile{% endblock %}
+
+{% block content %}
+<strong>Update your profile</strong>
+<br/>
+<form action="/profile" method="post" enctype="multipart/form-data">
+  <label for="paypal_email">PayPal Email:&nbsp; </label><input type="text" name="paypal_email" value="{{ profile.paypal_email }}"/><br/>
+  <input type="submit" value="Update"/>
+</form>
+</div>
+<br/>
+<a href="/sell">Back to seller page</a>
+{% endblock %}

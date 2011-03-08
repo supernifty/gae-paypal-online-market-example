@@ -1,8 +1,15 @@
+import decimal
+
 from google.appengine.ext import db
 
 class Profile(db.Model):
+  '''extra user details'''
   owner = db.UserProperty()
   paypal_email = db.EmailProperty()  # for payment
+
+  @staticmethod
+  def from_user( u ):
+    return Profile.all().filter( "owner = ", u ).get()
 
 class Item(db.Model):
   '''an item for sale'''
@@ -16,6 +23,9 @@ class Item(db.Model):
   def price_dollars( self ):
     return self.price / 100.0
 
+  def price_decimal( self ):
+    return decimal.Decimal( str( self.price / 100.0 ) )
+
   @staticmethod
   def recent():
     return Item.all().filter( "enabled =", True ).order('-created').fetch(10)
@@ -28,5 +38,5 @@ class Purchase(db.Model):
   status = db.StringProperty( choices=( 'NEW', 'CREATED', 'ERROR', 'CANCELLED', 'RETURNED', 'COMPLETED' ) )
   status_detail = db.StringProperty()
   secret = db.StringProperty() # to verify return_url
-  debug_request = db.StringProperty()
-  debug_response = db.StringProperty()
+  debug_request = db.TextProperty()
+  debug_response = db.TextProperty()
