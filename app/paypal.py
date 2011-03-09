@@ -43,9 +43,6 @@ class Pay( object ):
 
     if ipn_url != None:
       data['ipnNotificationUrl'] = ipn_url
-      logging.debug( "IPN url: %s" % ipn_url )
-    else:
-      logging.debug( "not using IPN" )
 
     self.raw_request = json.dumps(data)
     request = urllib2.Request( "%s%s" % ( settings.PAYPAL_ENDPOINT, "Pay" ), data=self.raw_request, headers=headers )
@@ -60,6 +57,9 @@ class Pay( object ):
 
   def amount( self ):
     return decimal.Decimal(self.results[ 'payment_gross' ])
+
+  def paykey( self ):
+    return self.response['payKey']
 
   def next_url( self ):
     return '%s?cmd=_ap-payment&paykey=%s' % ( settings.PAYPAL_PAYMENT_HOST, self.response['payKey'] )

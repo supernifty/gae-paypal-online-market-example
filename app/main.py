@@ -61,16 +61,33 @@ class Sell(webapp.RequestHandler):
 class Buy(webapp.RequestHandler):
   @login_required
   def get(self, key):
-    data = {
-      'item': model.Item.get(key)
-    }
+    item = model.Item.get(key)
+    data = { 'item': item }
     util.add_user( self.request.uri, data )
-    path = os.path.join(os.path.dirname(__file__), 'templates/buy.htm')
+    if settings.USE_EMBEDDED:
+      (ok, pay) = self.start_purchase( item )
+      data['endpoint'] = settings.EMBEDDED_ENDPOINT
+      data['paykey'] = pay.paykey()
+      path = os.path.join(os.path.dirname(__file__), 'templates/buy_embedded.htm')
+    else:
+      path = os.path.join(os.path.dirname(__file__), 'templates/buy.htm')
     self.response.out.write(template.render(path, data))
 
   def post(self, key):
     item = model.Item.get(key)
-    # --- start purchase process ---
+    (ok, pay) = self.start_purchase(item)
+    if ok:
+      self.redirect( pay.next_url() ) # go to paypal
+    else:
+      data = {
+        'item': model.Item.get(key),
+        'message': 'An error occurred during the purchase process'
+      }
+      util.add_user( self.request.uri, data )
+      path = os.path.join(os.path.dirname(__file__), 'templates/buy.htm')
+      self.response.out.write(template.render(path, data))
+
+  def start_purchase(self, item):
     purchase = model.Purchase( item=item, purchaser=users.get_current_user(), status='NEW', secret=util.random_alnum(16) )
     purchase.put()
     seller_paypal_email = util.paypal_email(item.owner)
@@ -93,17 +110,11 @@ class Buy(webapp.RequestHandler):
     if pay.status() == 'CREATED':
       purchase.status = 'CREATED'
       purchase.put()
-      self.redirect( pay.next_url() ) # go to paypal
+      return (True, pay)
     else:
       purchase.status = 'ERROR'
       purchase.put()
-      data = {
-        'item': model.Item.get(key),
-        'message': 'An error occurred during the purchase process'
-      }
-      util.add_user( self.request.uri, data )
-      path = os.path.join(os.path.dirname(__file__), 'templates/buy.htm')
-      self.response.out.write(template.render(path, data))
+      return (False, pay)
 
 class BuyReturn(webapp.RequestHandler):
 
@@ -132,18 +143,24 @@ class BuyReturn(webapp.RequestHandler):
         purchase.status = 'RETURNED'
         purchase.put()
 
-      # verify the transaction TODO
-  
       data = {
         'item': model.Item.get(item_key),
         'message': 'Purchased',
       }
+
       util.add_user( self.request.uri, data )
-      path = os.path.join(os.path.dirname(__file__), 'templates/buy.htm')
+      
+      if settings.USE_EMBEDDED:
+        data['close_embedded'] = True
+        data['items'] = model.Item.recent()
+        path = os.path.join(os.path.dirname(__file__), 'templates/main_embedded.htm')
+      else:
+        path = os.path.join(os.path.dirname(__file__), 'templates/buy.htm')
       self.response.out.write(template.render(path, data))
 
 class BuyCancel(webapp.RequestHandler):
   def get(self, item_key, purchase_key):
+    logging.debug( "cancelled %s with %s" % ( item_key, purchase_key ) )
     purchase = model.Purchase.get( purchase_key )
     purchase.status = 'CANCELLED'
     purchase.put()
@@ -152,7 +169,12 @@ class BuyCancel(webapp.RequestHandler):
       'message': 'Purchase cancelled',
     }
     util.add_user( self.request.uri, data )
-    path = os.path.join(os.path.dirname(__file__), 'templates/buy.htm')
+    if settings.USE_EMBEDDED:
+      data['close_embedded'] = True
+      data['items'] = model.Item.recent()
+      path = os.path.join(os.path.dirname(__file__), 'templates/main_embedded.htm')
+    else:
+      path = os.path.join(os.path.dirname(__file__), 'templates/buy.htm')
     self.response.out.write(template.render(path, data))
 
 class Image (webapp.RequestHandler):
@@ -216,8 +238,8 @@ application = webapp.WSGIApplication( [
     ('/', Home),
     ('/sell', Sell),
     ('/sell/(.*)/', Sell),
-    ('/buy/(.*)/return/(.*)/(.*)/', BuyReturn),
-    ('/buy/(.*)/cancel/(.*)/', BuyCancel),
+    ('/buy/(.*)/return/([^/]*)/([^/]*)/.*', BuyReturn),
+    ('/buy/(.*)/cancel/([^/]*)/.*', BuyCancel),
     ('/buy/(.*)/', Buy),
     ('/image/(.*)/', Image),
     ('/profile', Profile),

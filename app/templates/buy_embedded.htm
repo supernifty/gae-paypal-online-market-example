@@ -1,0 +1,21 @@
+{% extends "base.htm" %}
+
+{% block title %}Buy {{ item.title }}{% endblock %}
+{% block heading %}Buy {{ item.title }}{% endblock %}
+{% block head %}
+<script src="http://www.paypalobjects.com/js/external/dg.js" type="text/javascript"></script>
+{% endblock %}
+{% block content %}
+<p>
+You wish to buy <strong>{{ item.title }}</strong> for <strong>${{ item.price_dollars|floatformat:2 }}</strong>.
+
+<form action="{{ endpoint }}" target="PPDGFrame"> 
+  <input id="type" type="hidden" name="expType" value="light"> 
+  <input id="paykey" type="hidden" name="paykey" value="{{ paykey }}"> 
+  <input type="submit" id="submit_button" value="Buy Now"> 
+</form>
+</p>
+<script type="text/javascript">
+  var dgFlow = new PAYPAL.apps.DGFlow({ trigger: 'submit_button' }); 
+</script>
+{% endblock %}

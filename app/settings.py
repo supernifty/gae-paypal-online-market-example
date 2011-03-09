@@ -15,3 +15,7 @@ PAYPAL_EMAIL = '*** REQUIRED ***'
 PAYPAL_COMMISSION = 0.2 # 20%
 
 USE_IPN = False
+USE_EMBEDDED = True
+
+# EMBEDDED_ENDPOINT = 'https://paypal.com/webapps/adaptivepayment/flow/pay'
+EMBEDDED_ENDPOINT = 'https://www.sandbox.paypal.com/webapps/adaptivepayment/flow/pay'
