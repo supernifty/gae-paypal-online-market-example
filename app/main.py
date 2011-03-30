@@ -22,7 +22,17 @@ os.environ['foo_proxy'] = 'bar'
 import urllib
 urllib.getproxies_macosx_sysconf = lambda: {}
 
-class Home(webapp.RequestHandler):
+class RequestHandler(webapp.RequestHandler):
+  def error( self, code ):
+    webapp.RequestHandler.error( self, code )
+    if code >= 500 and code <= 599:
+      path = os.path.join(os.path.dirname(__file__), 'templates/50x.htm')
+      self.response.out.write(template.render(path, {}))
+    if code == 404:
+      path = os.path.join(os.path.dirname(__file__), 'templates/404.htm')
+      self.response.out.write(template.render(path, {}))
+
+class Home(RequestHandler):
   def get(self):
     data = {
       'items': model.Item.recent(),
@@ -31,7 +41,7 @@ class Home(webapp.RequestHandler):
     path = os.path.join(os.path.dirname(__file__), 'templates/main.htm')
     self.response.out.write(template.render(path, data))
 
-class Sell(webapp.RequestHandler):
+class Sell(RequestHandler):
   def _process(self, message=None):
     data = { 
       'message': message,
@@ -58,7 +68,7 @@ class Sell(webapp.RequestHandler):
       else:
         self._process("Unsupported command.")
 
-class Buy(webapp.RequestHandler):
+class Buy(RequestHandler):
   @login_required
   def get(self, key):
     item = model.Item.get(key)
@@ -88,23 +98,28 @@ class Buy(webapp.RequestHandler):
       self.response.out.write(template.render(path, data))
 
   def start_purchase(self, item):
-    purchase = model.Purchase( item=item, purchaser=users.get_current_user(), status='NEW', secret=util.random_alnum(16) )
+    purchase = model.Purchase( item=item, owner=item.owner, purchaser=users.get_current_user(), status='NEW', secret=util.random_alnum(16) )
     purchase.put()
-    seller_paypal_email = util.paypal_email(item.owner)
     if settings.USE_IPN:
       ipn_url = "%s/ipn/%s/%s/" % ( self.request.host_url, purchase.key(), purchase.secret )
     else:
       ipn_url = None
+    if settings.USE_CHAIN:
+      seller_paypal_email = util.paypal_email(item.owner)
+    else:
+      seller_paypal_email = None
     pay = paypal.Pay( 
       item.price_dollars(), 
       "%sreturn/%s/%s/" % (self.request.uri, purchase.key(), purchase.secret), 
       "%scancel/%s/" % (self.request.uri, purchase.key()), 
       self.request.remote_addr,
       seller_paypal_email,
-      ipn_url)
+      ipn_url,
+      shipping=settings.SHIPPING)
 
     purchase.debug_request = pay.raw_request
     purchase.debug_response = pay.raw_response
+    purchase.paykey = pay.paykey()
     purchase.put()
     
     if pay.status() == 'CREATED':
@@ -116,7 +131,7 @@ class Buy(webapp.RequestHandler):
       purchase.put()
       return (False, pay)
 
-class BuyReturn(webapp.RequestHandler):
+class BuyReturn(RequestHandler):
 
   def get(self, item_key, purchase_key, secret ):
     '''user arrives here after purchase'''
@@ -143,6 +158,10 @@ class BuyReturn(webapp.RequestHandler):
         purchase.status = 'RETURNED'
         purchase.put()
 
+      if settings.SHIPPING:
+        purchase.shipping = paypal.ShippingAddress( purchase.paykey, self.request.remote_addr ).raw_response # TODO parse
+        purchase.put()
+
       data = {
         'item': model.Item.get(item_key),
         'message': 'Purchased',
@@ -158,7 +177,7 @@ class BuyReturn(webapp.RequestHandler):
         path = os.path.join(os.path.dirname(__file__), 'templates/buy.htm')
       self.response.out.write(template.render(path, data))
 
-class BuyCancel(webapp.RequestHandler):
+class BuyCancel(RequestHandler):
   def get(self, item_key, purchase_key):
     logging.debug( "cancelled %s with %s" % ( item_key, purchase_key ) )
     purchase = model.Purchase.get( purchase_key )
@@ -177,7 +196,7 @@ class BuyCancel(webapp.RequestHandler):
       path = os.path.join(os.path.dirname(__file__), 'templates/buy.htm')
     self.response.out.write(template.render(path, data))
 
-class Image (webapp.RequestHandler):
+class Image (RequestHandler):
   def get(self, id):
     item = db.get(id)
     if item.image:
@@ -186,7 +205,7 @@ class Image (webapp.RequestHandler):
     else:
       self.error(404)
 
-class Profile (webapp.RequestHandler):
+class Profile (RequestHandler):
   @login_required
   def get(self):
     data = {
@@ -209,7 +228,7 @@ class Profile (webapp.RequestHandler):
     path = os.path.join(os.path.dirname(__file__), 'templates/profile.htm')
     self.response.out.write(template.render(path, data))
 
-class IPN (webapp.RequestHandler):
+class IPN (RequestHandler):
 
   def post(self, key, secret):
     '''incoming post from paypal'''
@@ -234,6 +253,19 @@ class IPN (webapp.RequestHandler):
       logging.info( "PayPal IPN verify failed: %s" % ipn.error )
       logging.debug( "Request was: %s" % self.request.body )
 
+class SellHistory (RequestHandler):
+  def get(self):
+    data = {
+      'items': model.Purchase.all().filter( 'owner =', users.get_current_user() ).order('-created').fetch(100),
+    }
+    util.add_user( self.request.uri, data )
+    path = os.path.join(os.path.dirname(__file__), 'templates/sellhistory.htm')
+    self.response.out.write(template.render(path, data))
+
+class NotFound (RequestHandler):
+  def get(self):
+    self.error(404)
+
 application = webapp.WSGIApplication( [
     ('/', Home),
     ('/sell', Sell),
@@ -244,6 +276,8 @@ application = webapp.WSGIApplication( [
     ('/image/(.*)/', Image),
     ('/profile', Profile),
     ('/ipn/(.*)/(.*)/', IPN),
+    ('/sellhistory', SellHistory),
+    ('/.*', NotFound),
   ],
   debug=True)
 

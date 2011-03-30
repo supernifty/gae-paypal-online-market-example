@@ -14,8 +14,10 @@ PAYPAL_EMAIL = '*** REQUIRED ***'
 
 PAYPAL_COMMISSION = 0.2 # 20%
 
+USE_CHAIN = False
 USE_IPN = False
-USE_EMBEDDED = True
+USE_EMBEDDED = False
+SHIPPING = False # not yet working properly; PayPal bug
 
 # EMBEDDED_ENDPOINT = 'https://paypal.com/webapps/adaptivepayment/flow/pay'
 EMBEDDED_ENDPOINT = 'https://www.sandbox.paypal.com/webapps/adaptivepayment/flow/pay'

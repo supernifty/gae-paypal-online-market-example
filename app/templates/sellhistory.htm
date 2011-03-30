@@ -1,0 +1,19 @@
+{% extends "base.htm" %}
+
+{% block title %}Sales History{% endblock %}
+{% block heading %}Sales History{% endblock %}
+
+{% block content %}
+<p>
+<ul>
+{% for purchase in items %}
+  {% ifnotequal purchase.status 'CREATED' %}
+  <li>{{ purchase.item.title }} by {{ purchase.purchaser }} on {{ purchase.created }}: {{ purchase.status }}</li>
+  {% endifnotequal %}
+{% endfor %}
+</ul>
+</p>
+<p>
+<a href="/sell">Sell an item</a>
+</p>
+{% endblock %}

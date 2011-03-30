@@ -33,6 +33,7 @@ class Item(db.Model):
 class Purchase(db.Model):
   '''a completed transaction'''
   item = db.ReferenceProperty(Item)
+  owner = db.UserProperty()
   purchaser = db.UserProperty()
   created = db.DateTimeProperty(auto_now_add=True)
   status = db.StringProperty( choices=( 'NEW', 'CREATED', 'ERROR', 'CANCELLED', 'RETURNED', 'COMPLETED' ) )
@@ -40,3 +41,5 @@ class Purchase(db.Model):
   secret = db.StringProperty() # to verify return_url
   debug_request = db.TextProperty()
   debug_response = db.TextProperty()
+  paykey = db.StringProperty()
+  shipping = db.TextProperty()

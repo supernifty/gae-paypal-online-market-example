@@ -15,3 +15,9 @@ indexes:
   - name: enabled
   - name: created
     direction: desc
+
+- kind: Purchase
+  properties:
+  - name: owner
+  - name: created
+    direction: desc
