@@ -87,7 +87,7 @@ class Buy(RequestHandler):
     item = model.Item.get(key)
     (ok, pay) = self.start_purchase(item)
     if ok:
-      self.redirect( pay.next_url() ) # go to paypal
+      self.redirect( pay.next_url().encode('ascii') ) # go to paypal
     else:
       data = {
         'item': model.Item.get(key),
@@ -266,7 +266,7 @@ class NotFound (RequestHandler):
   def get(self):
     self.error(404)
 
-application = webapp.WSGIApplication( [
+app = webapp.WSGIApplication( [
     ('/', Home),
     ('/sell', Sell),
     ('/sell/(.*)/', Sell),
@@ -283,7 +283,7 @@ application = webapp.WSGIApplication( [
 
 def main():
   logging.getLogger().setLevel(logging.DEBUG)
-  run_wsgi_app(application)
+  run_wsgi_app(app)
 
 if __name__ == "__main__":
   main()
